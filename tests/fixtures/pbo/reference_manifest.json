@@ -1,0 +1,8 @@
+{
+  "prefix": "RaiZo\\Reference",
+  "entries": [
+    "config.bin",
+    "scripts\\5_Mission\\main.c"
+  ],
+  "sha256": "4cf5ddb94f62f499c6f9e2df722971fef8392201fa1d87528a389e3605e2ca2a"
+}

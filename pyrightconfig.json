@@ -1,0 +1,19 @@
+{
+  "include": [
+    "core",
+    "ui",
+    "main.py",
+    "tools",
+    "tests"
+  ],
+  "exclude": [
+    "Examples",
+    ".venv",
+    ".venv-test",
+    "build",
+    "dist"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": false,
+  "reportMissingModuleSource": false
+}

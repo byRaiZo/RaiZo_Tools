@@ -1,0 +1,83 @@
+{
+  "comment": "Каталог официальных/комьюнити миссий. path может содержать {latestV} — подставляется старшая папка V* репозитория.",
+  "missions": [
+    {
+      "id": "dayzOffline.chernarusplus",
+      "title": "Chernarus (официальная)",
+      "world": "chernarusplus",
+      "repo": "BohemiaInteractive/DayZ-Central-Economy",
+      "branch": "master",
+      "path": "dayzOffline.chernarusplus"
+    },
+    {
+      "id": "dayzOffline.enoch",
+      "title": "Livonia / Enoch (официальная)",
+      "world": "enoch",
+      "repo": "BohemiaInteractive/DayZ-Central-Economy",
+      "branch": "master",
+      "path": "dayzOffline.enoch"
+    },
+    {
+      "id": "dayzOffline.sakhal",
+      "title": "Sakhal (официальная)",
+      "world": "sakhal",
+      "repo": "BohemiaInteractive/DayZ-Central-Economy",
+      "branch": "master",
+      "path": "dayzOffline.sakhal"
+    },
+    {
+      "id": "regular.namalsk",
+      "title": "Namalsk Regular",
+      "world": "namalsk",
+      "repo": "SumrakDZN/Namalsk-Server",
+      "branch": "main",
+      "path": "Mission Files/regular.namalsk",
+      "map_mod": "2289456201"
+    },
+    {
+      "id": "hardcore.namalsk",
+      "title": "Namalsk Hardcore",
+      "world": "namalsk",
+      "repo": "SumrakDZN/Namalsk-Server",
+      "branch": "main",
+      "path": "Mission Files/hardcore.namalsk",
+      "map_mod": "2289456201"
+    },
+    {
+      "id": "empty.deerisle",
+      "title": "Deer Isle",
+      "world": "deerisle",
+      "repo": "johnmclane666/Deerisle-Stable",
+      "branch": "master",
+      "path": "{latestV}/empty.deerisle",
+      "map_mod": "1602372402"
+    },
+    {
+      "id": "dayzOffline.banov",
+      "title": "Banov",
+      "world": "banov",
+      "repo": "KubeloLive/Banov-Central-Economy",
+      "branch": "main",
+      "path": "dayzOffline.banov",
+      "map_mod": "2415195639"
+    },
+    {
+      "id": "mission.takistanplus",
+      "title": "Takistan Plus",
+      "world": "takistanplus",
+      "repo": "CypeR79/DayZ-Projects",
+      "branch": "main",
+      "path": "TakistanPlus/mission",
+      "map_mod": "2153795105"
+    },
+    {
+      "id": "dayzOffline.kot_map",
+      "title": "KR Test Map",
+      "world": "kot_map",
+      "repo": "KRdayzmodding/KR_TestMap",
+      "branch": "main",
+      "path": "dayzOffline.kot_map",
+      "mods": [{ "path": "@KR_BlankMap" }]
+    }
+  ]
+}

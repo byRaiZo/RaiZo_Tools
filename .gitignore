@@ -1,0 +1,47 @@
+__pycache__/
+*.pyc
+build/
+dist/
+# спеки PyInstaller обычно генерируются, но наша написана руками и нужна сборке
+*.spec
+!RaiZoTools.spec
+
+# отчёты о падениях (core/crashguard) — локальные, у каждого свои
+logs/
+
+# скачанное обновление (core/updater) — десятки мегабайт пользовательских данных
+update/
+
+# Пользовательские данные — не коммитим личные настройки и пресеты
+config/settings.json
+config/presets/
+config/mod_presets/
+config/mod_sources.json
+downloads/
+
+# IDE
+.vscode/
+*.code-workspace
+
+# Личные метки/зависимости модов (генерируются приложением по месту)
+config/mod_flags.json
+config/mod_flag_defs.json
+config/mod_dependencies.json
+config/mod_workshop_ids.json
+
+# Claude Code — локальные права/настройки этого пользователя
+.claude/
+
+# Временные бэкапы конфига при тестировании чистой установки
+config_backup_*/
+config_test_*/
+
+Examples/
+.venv/
+.venv-test/
+.pytest_cache/
+.ruff_cache/
+.codebase-memory/
+.coverage
+config.json
+config.v*.backup.json
