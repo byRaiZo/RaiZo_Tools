@@ -20,6 +20,11 @@ import hashlib
 import shutil
 from pathlib import Path
 
+for stream in (sys.stdout, sys.stderr):
+    reconfigure = getattr(stream, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8")
+
 ROOT = Path(__file__).resolve().parent.parent
 BUILD = ROOT / "build"
 sys.path.insert(0, str(ROOT))
