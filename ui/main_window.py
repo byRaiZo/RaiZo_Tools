@@ -676,7 +676,9 @@ class MainWindow(FluentWindow):
             app.setWindowIcon(outside)
         # строго после setWindowIcon: оно само шлёт в шапку свою иконку по
         # сигналу windowIconChanged, и наш вариант должен лечь поверх
-        self.titleBar.setIcon(app_icon())
+        set_icon = getattr(self.titleBar, "setIcon", None)
+        if callable(set_icon):
+            set_icon(app_icon())
 
     def _log_on_top_changed(self, key: str, on: bool) -> None:
         """Галка «поверх всех» — своя у каждого окна логов."""

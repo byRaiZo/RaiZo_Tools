@@ -387,7 +387,9 @@ class ConnectModsDialog(ThemedDialog):
 
     def _iter_items(self):
         for i in range(self.tree.topLevelItemCount()):
-            yield self.tree.topLevelItem(i)
+            item = self.tree.topLevelItem(i)
+            if item is not None:
+                yield item
 
     def _item_mod(self, item: QTreeWidgetItem) -> ModInfo | None:
         key = item.data(COL_NAME, Qt.ItemDataRole.UserRole)

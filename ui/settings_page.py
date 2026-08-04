@@ -497,7 +497,7 @@ class SettingsPage(QScrollArea):
             callback()
 
     def _theme_changed(self, _idx: int) -> None:
-        code = self.theme.currentData()
+        code = str(self.theme.currentData() or "auto")
         setTheme({"light": Theme.LIGHT, "dark": Theme.DARK, "auto": Theme.AUTO}.get(code, Theme.AUTO))
         self.settings.theme = code
         self.settings.save()

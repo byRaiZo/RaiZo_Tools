@@ -268,7 +268,7 @@ class FirstRunWizard(ThemedWizard):
 
     def accept(self) -> None:
         s = self.settings
-        s.language = self.lang.currentData()
+        s.language = str(self.lang.currentData() or "auto")
         s.project_prefix = self.project_prefix.text().strip()
         for key, edit in self.paths.items():
             setattr(s, key, edit.text().strip())

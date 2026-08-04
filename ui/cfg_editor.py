@@ -192,8 +192,11 @@ class CfgEditor(QWidget):
             return
         values = {}
         for row in range(self.table.rowCount()):
-            name = self.table.item(row, 0).text()
-            values[name] = self.table.item(row, 1).text()
+            name_item = self.table.item(row, 0)
+            value_item = self.table.item(row, 1)
+            if name_item is None or value_item is None:
+                continue
+            values[name_item.text()] = value_item.text()
         try:
             self.cfg.set_values(values)
             self.cfg.save()

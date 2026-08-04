@@ -278,13 +278,13 @@ class AdvancedPresetDialog(ThemedDialog):
 
         self.map_picker = MapPicker(self)
         self.map_picker.set_context(
-            settings, self.branch.currentData(), self.mode.currentData(), preset.name, current_mission=preset.mission
+            settings, self._branch_value(), self._mode_value(), preset.name, current_mission=preset.mission
         )
         self.cfg_picker = _ConfigPicker(self)
         self.cfg_picker.set_context(
             settings,
-            self.branch.currentData(),
-            self.mode.currentData(),
+            self._branch_value(),
+            self._mode_value(),
             preset.name,
             self.map_picker.mission_name(),
             current_config=preset.server_config,
@@ -388,12 +388,18 @@ class AdvancedPresetDialog(ThemedDialog):
         btns.addWidget(b_save)
         outer_layout.addLayout(btns)
 
+    def _branch_value(self) -> str:
+        return str(self.branch.currentData() or STABLE)
+
+    def _mode_value(self) -> str:
+        return str(self.mode.currentData() or MODE_DEDICATED)
+
     def _profile_dir(self) -> str:
         """Абсолютный путь папки профиля для текущих значений формы."""
         from core.layout import resolve_profiles, preset_base_name
 
         profiles = self.preset.profiles or preset_base_name(self.name.text().strip(), self.map_picker.mission_name())
-        return resolve_profiles(profiles, self.settings, self.branch.currentData(), self.mode.currentData())
+        return resolve_profiles(profiles, self.settings, self._branch_value(), self._mode_value())
 
     def _open_profile(self) -> None:
         import os
@@ -457,8 +463,8 @@ class AdvancedPresetDialog(ThemedDialog):
     def _mission_ctx(self) -> None:
         self.map_picker.set_context(
             self.settings,
-            self.branch.currentData(),
-            self.mode.currentData(),
+            self._branch_value(),
+            self._mode_value(),
             self.name.text().strip(),
             current_mission=self.map_picker.mission_name(),
         )
@@ -467,8 +473,8 @@ class AdvancedPresetDialog(ThemedDialog):
     def _cfg_ctx(self) -> None:
         self.cfg_picker.set_context(
             self.settings,
-            self.branch.currentData(),
-            self.mode.currentData(),
+            self._branch_value(),
+            self._mode_value(),
             self.name.text().strip(),
             self.map_picker.mission_name(),
         )
@@ -500,7 +506,7 @@ class AdvancedPresetDialog(ThemedDialog):
             if widget:
                 widget.deleteLater()
         self._param_widgets = {}
-        diag = self.mode.currentData() == MODE_DIAG
+        diag = self._mode_value() == MODE_DIAG
         for target, title, values in (
             (SERVER, tr("preset.params_server", "Параметры сервера"), self.preset.params_server),
             (CLIENT, tr("preset.params_client", "Параметры клиента"), self.preset.params_client),
@@ -539,7 +545,7 @@ class AdvancedPresetDialog(ThemedDialog):
 
     def _collect_params(self, target: str) -> dict:
         out = {}
-        diag = self.mode.currentData() == MODE_DIAG
+        diag = self._mode_value() == MODE_DIAG
         for spec in specs_for(target, diag):
             w = self._param_widgets.get((target, spec.name))
             if w is None:
@@ -588,13 +594,11 @@ class AdvancedPresetDialog(ThemedDialog):
             self.name_error.setText(conflict)
             return
         if new_name != p.name:
-            rename_preset_files(
-                self.settings, self.branch.currentData(), self.mode.currentData(), p.name, new_name, world
-            )
+            rename_preset_files(self.settings, self._branch_value(), self._mode_value(), p.name, new_name, world)
             p.name = new_name  # save() сам уберёт старый файл пресета
             self.map_picker.set_preset_name(new_name)
-        p.mode = self.mode.currentData()
-        p.branch = self.branch.currentData()
+        p.mode = self._mode_value()
+        p.branch = self._branch_value()
         p.mission = self.map_picker.mission_name()
         if self.cfg_picker.needs_creation():
             try:

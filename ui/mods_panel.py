@@ -14,7 +14,7 @@ ui/mod_flags_dialog.py) назначаются через ПКМ по моду �
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING
 
 import os
@@ -847,6 +847,8 @@ class ModsPanel(QWidget):
         out = set()
         for i in range(self.tree.topLevelItemCount()):
             g = self.tree.topLevelItem(i)
+            if g is None:
+                continue
             if g.isExpanded():
                 out.add(g.text(COL_NAME).rsplit(" (", 1)[0])
         return out
@@ -1047,17 +1049,21 @@ class ModsPanel(QWidget):
             return _GREY
         return _GREEN if mod.sources else _ORANGE
 
-    def _iter_mod_items(self):
+    def _iter_mod_items(self) -> Iterator[QTreeWidgetItem]:
         """Все строки модов — работает и в режиме дерева, и в плоском списке."""
 
-        def walk(item):
+        def walk(item: QTreeWidgetItem) -> Iterator[QTreeWidgetItem]:
             if item.data(COL_NAME, Qt.ItemDataRole.UserRole):
                 yield item
             for ci in range(item.childCount()):
-                yield from walk(item.child(ci))
+                child = item.child(ci)
+                if child is not None:
+                    yield from walk(child)
 
         for gi in range(self.tree.topLevelItemCount()):
-            yield from walk(self.tree.topLevelItem(gi))
+            item = self.tree.topLevelItem(gi)
+            if item is not None:
+                yield from walk(item)
 
     def _item_mod(self, item: QTreeWidgetItem) -> ModInfo | None:
         key = item.data(COL_NAME, Qt.ItemDataRole.UserRole)
@@ -1133,13 +1139,19 @@ class ModsPanel(QWidget):
         if self._flat_view:
             for i in range(self.tree.topLevelItemCount()):
                 item = self.tree.topLevelItem(i)
+                if item is None:
+                    continue
                 item.setHidden(not matches(item))
             return
         for gi in range(self.tree.topLevelItemCount()):
             g = self.tree.topLevelItem(gi)
+            if g is None:
+                continue
             visible_children = 0
             for ci in range(g.childCount()):
                 child = g.child(ci)
+                if child is None:
+                    continue
                 match = matches(child)
                 child.setHidden(not match)
                 visible_children += int(match)
@@ -1155,7 +1167,10 @@ class ModsPanel(QWidget):
             return []
         matches: set[str] = set()
         for ci in range(gitem.childCount()):
-            mod = self._item_mod(gitem.child(ci))
+            child = gitem.child(ci)
+            if child is None:
+                continue
+            mod = self._item_mod(child)
             if not mod:
                 continue
             mp = Path(mod.path)

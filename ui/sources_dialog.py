@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal
@@ -148,10 +149,10 @@ class SourcesDialog(ThemedDialog):
         if not any_rows:
             self.tree.addTopLevelItem(QTreeWidgetItem([tr("sources.none", "Локальных модов с сорсами нет"), "", ""]))
 
-    def _items(self):
+    def _items(self) -> Iterator[QTreeWidgetItem]:
         for i in range(self.tree.topLevelItemCount()):
             item = self.tree.topLevelItem(i)
-            if item.data(COL_MOD, Qt.ItemDataRole.UserRole):
+            if item is not None and item.data(COL_MOD, Qt.ItemDataRole.UserRole):
                 yield item
 
     def _set_all(self, state: bool) -> None:
