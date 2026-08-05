@@ -22,7 +22,6 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QListWidget,
     QListWidgetItem,
-    QMessageBox,
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
@@ -36,6 +35,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
+from qfluentwidgets import InfoBar, InfoBarPosition, MessageBox
 
 from core import packer, pbo_context_menu
 from core.pbobuilder.build import build_all
@@ -57,7 +57,7 @@ from core.pbobuilder.targets import detect_addon_targets
 from core.settings import RES_DIR, Settings
 from ui.theme import BRAND_ERROR, BRAND_INFO, BRAND_SUCCESS, BRAND_WARNING, apply_pbo_style
 
-APP_TITLE = "PBO Builder byRaiZo"
+APP_TITLE = "RaiZo Tools — PBO Builder"
 ASSETS_DIR = RES_DIR / "core" / "pbobuilder" / "assets"
 
 
@@ -77,6 +77,7 @@ TEXT = {
         "clear_logs": "Очистить логи",
         "logs_folder": "Папка логов",
         "cancel": "Отмена",
+        "ok": "Понятно",
         "save": "Сохранить",
         "paths": "Пути",
         "ready": "Готов",
@@ -144,10 +145,14 @@ TEXT = {
         "logs_cleared": "Удалено файлов логов: {count}.",
         "cannot_clear_all_temp": "Нельзя очищать temp во время сборки.",
         "clear_all_temp_confirm": "Очистить всё содержимое temp-папки?\n\n{path}",
+        "clear_all_temp_title": "Очистка temp",
+        "clear_all_temp_action": "Очистить temp",
         "all_temp_cleared": "Содержимое temp-папки очищено.",
         "cannot_clear_cache": "Нельзя очищать кэш во время сборки.",
         "select_addon": "Выберите хотя бы один аддон.",
         "clear_cache_confirm": "Очистить кэш выбранных аддонов?",
+        "clear_cache_title": "Очистка кэша",
+        "clear_cache_action": "Очистить кэш",
         "cache_cleared": "Очищено записей кэша: {count}.",
         "no_build_logs": "Логи сборки пока не найдены.",
         "context_menu": "Контекстное меню Windows",
@@ -172,6 +177,7 @@ TEXT = {
         "clear_logs": "Clear logs",
         "logs_folder": "Logs folder",
         "cancel": "Cancel",
+        "ok": "OK",
         "save": "Save",
         "paths": "Paths",
         "ready": "Ready",
@@ -239,10 +245,14 @@ TEXT = {
         "logs_cleared": "Deleted {count} log file(s).",
         "cannot_clear_all_temp": "Cannot clear temp while a build is running.",
         "clear_all_temp_confirm": "Clear all selected temp folder contents?\n\n{path}",
+        "clear_all_temp_title": "Clear temp",
+        "clear_all_temp_action": "Clear temp",
         "all_temp_cleared": "All temp folder contents cleared.",
         "cannot_clear_cache": "Cannot clear cache while a build is running.",
         "select_addon": "Select at least one addon.",
         "clear_cache_confirm": "Clear build cache for selected addons?",
+        "clear_cache_title": "Clear cache",
+        "clear_cache_action": "Clear cache",
         "cache_cleared": "Cleared {count} cache entries.",
         "no_build_logs": "No build logs found yet.",
         "context_menu": "Windows context menu",
@@ -279,6 +289,22 @@ def _language(value: str) -> str:
 def _t(key: str, language: str, **values: object) -> str:
     text = TEXT[_language(language)].get(key, TEXT["en"].get(key, key))
     return text.format(**values)
+
+
+def _show_message(parent: QWidget, message: str, language: str, title: str = APP_TITLE) -> None:
+    """Единый однокнопочный Fluent-диалог вместо системного QMessageBox."""
+    box = MessageBox(title, message, parent.window())
+    box.yesButton.setText(_t("ok", language))
+    box.cancelButton.hide()
+    box.exec()
+
+
+def _confirm(parent: QWidget, title: str, message: str, action: str, language: str) -> bool:
+    """Подтверждение в стиле остальных опасных действий RaiZo Tools."""
+    box = MessageBox(title, message, parent.window())
+    box.yesButton.setText(action)
+    box.cancelButton.setText(_t("cancel", language))
+    return bool(box.exec())
 
 
 def _set_button_icon(button: QToolButton, filename: str, fallback: QIcon, size: int) -> None:
@@ -354,9 +380,9 @@ class PathRow(QWidget):
         value = self.text()
         target = value if os.path.isdir(value) else os.path.dirname(value)
         if not value:
-            QMessageBox.warning(self, APP_TITLE, _t("path_empty", self.language))
+            _show_message(self, _t("path_empty", self.language), self.language)
         elif not target or not os.path.isdir(target):
-            QMessageBox.warning(self, APP_TITLE, _t("path_missing", self.language, path=value))
+            _show_message(self, _t("path_missing", self.language, path=value), self.language)
         else:
             _open_path(self, target)
 
@@ -502,9 +528,13 @@ class SourceRootRow(QWidget):
     def open_path(self) -> None:
         value = self.text()
         if not value:
-            QMessageBox.warning(self, APP_TITLE, _t("field_empty", self.language, label=self.path_label))
+            _show_message(self, _t("field_empty", self.language, label=self.path_label), self.language)
         elif not os.path.isdir(value):
-            QMessageBox.warning(self, APP_TITLE, _t("field_missing", self.language, label=self.path_label, path=value))
+            _show_message(
+                self,
+                _t("field_missing", self.language, label=self.path_label, path=value),
+                self.language,
+            )
         else:
             _open_path(self, value)
 
@@ -766,6 +796,21 @@ class PboBuilderPage(QWidget):
         self.refresh_addon_list()
         self.set_status(_t("ready", self.current_language), "ready")
         QTimer.singleShot(0, self.sync_addons_height)
+
+    def _notify(self, kind: str, message: str, title: str = APP_TITLE) -> None:
+        """Неблокирующее уведомление внутри общего окна RaiZo Tools."""
+        method = {
+            "success": InfoBar.success,
+            "warning": InfoBar.warning,
+            "error": InfoBar.error,
+        }.get(kind, InfoBar.info)
+        method(
+            title=title,
+            content=message,
+            parent=self.window(),
+            duration=6500 if kind == "error" else 4500,
+            position=InfoBarPosition.TOP_RIGHT,
+        )
 
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
@@ -1135,7 +1180,7 @@ class PboBuilderPage(QWidget):
         try:
             config = self._config()
         except (BuildError, OSError, ValueError) as exc:
-            QMessageBox.critical(self, APP_TITLE, str(exc))
+            self._notify("warning", str(exc))
             return
         self.log_lines.clear()
         self._set_running(True, _t("build_running_status", self.current_language), "building")
@@ -1152,7 +1197,7 @@ class PboBuilderPage(QWidget):
             config = self._config(preflight_only=True)
             targets = self._selected_targets()
         except (BuildError, OSError, ValueError) as exc:
-            QMessageBox.critical(self, APP_TITLE, str(exc))
+            self._notify("warning", str(exc))
             return
         self.log_lines.clear()
         self._set_running(True, _t("preflight_running_status", self.current_language), "preflight")
@@ -1187,23 +1232,24 @@ class PboBuilderPage(QWidget):
             if result.errors:
                 message = _t("preflight_errors", self.current_language, errors=result.errors, warnings=result.warnings)
                 self.show_log_dialog(_t("preflight_log", self.current_language), message)
-                QMessageBox.critical(self, APP_TITLE, message)
+                self._notify("error", message)
             elif result.warnings:
-                QMessageBox.warning(
-                    self, APP_TITLE, _t("preflight_warnings", self.current_language, warnings=result.warnings)
+                self._notify(
+                    "warning",
+                    _t("preflight_warnings", self.current_language, warnings=result.warnings),
                 )
             else:
-                QMessageBox.information(self, APP_TITLE, _t("preflight_ok", self.current_language))
+                self._notify("success", _t("preflight_ok", self.current_language))
         else:
             self._set_running(False, _t("build_finished_status", self.current_language), "success")
             self.progress.setValue(self.progress.maximum())
-            QMessageBox.information(self, APP_TITLE, _t("build_finished_message", self.current_language))
+            self._notify("success", _t("build_finished_message", self.current_language))
 
     def on_worker_failed(self, message: str) -> None:
         self._close_progress_dialog()
         self._set_running(False, _t("error_status", self.current_language), "error")
         self.show_log_dialog(_t("build_log", self.current_language), message)
-        QMessageBox.critical(self, APP_TITLE, message)
+        self._notify("error", message)
 
     def _close_progress_dialog(self) -> None:
         if self.build_progress_dialog is not None:
@@ -1236,7 +1282,7 @@ class PboBuilderPage(QWidget):
         self._apply_advanced_settings()
         self.settings.save()
         if previous_language != self.current_language:
-            QMessageBox.information(self, APP_TITLE, _t("language_restart", self.current_language))
+            self._notify("info", _t("language_restart", self.current_language))
 
     def update_context_menu_status(self, label: QLabel) -> None:
         key = "context_menu_installed" if pbo_context_menu.is_installed() else "context_menu_not_installed"
@@ -1247,10 +1293,10 @@ class PboBuilderPage(QWidget):
         try:
             pbo_context_menu.install()
         except OSError as exc:
-            QMessageBox.critical(
+            _show_message(
                 self,
-                APP_TITLE,
                 _t("context_menu_error", self.current_language, error=exc),
+                self.current_language,
             )
         self.update_context_menu_status(label)
 
@@ -1258,10 +1304,10 @@ class PboBuilderPage(QWidget):
         try:
             pbo_context_menu.remove()
         except OSError as exc:
-            QMessageBox.critical(
+            _show_message(
                 self,
-                APP_TITLE,
                 _t("context_menu_error", self.current_language, error=exc),
+                self.current_language,
             )
         self.update_context_menu_status(label)
 
@@ -1314,7 +1360,7 @@ class PboBuilderPage(QWidget):
 
     def clear_log_from_settings(self) -> None:
         if self.is_busy():
-            QMessageBox.warning(self, APP_TITLE, _t("cannot_clear_logs", self.current_language))
+            _show_message(self, _t("cannot_clear_logs", self.current_language), self.current_language)
             return
         files = [path for path in get_logs_dir().iterdir() if path.is_file()]
         deleted = 0
@@ -1329,16 +1375,19 @@ class PboBuilderPage(QWidget):
             if files
             else _t("logs_empty", self.current_language)
         )
-        QMessageBox.information(self, APP_TITLE, message)
+        _show_message(self, message, self.current_language)
 
     def clear_full_temp_from_ui(self) -> None:
         if self.is_busy():
-            QMessageBox.warning(self, APP_TITLE, _t("cannot_clear_all_temp", self.current_language))
+            self._notify("warning", _t("cannot_clear_all_temp", self.current_language))
             return
         temp = str(self.advanced_settings["temp_dir"] or DEFAULT_TEMP_DIR)
-        if (
-            QMessageBox.question(self, APP_TITLE, _t("clear_all_temp_confirm", self.current_language, path=temp))
-            != QMessageBox.StandardButton.Yes
+        if not _confirm(
+            self,
+            _t("clear_all_temp_title", self.current_language),
+            _t("clear_all_temp_confirm", self.current_language, path=temp),
+            _t("clear_all_temp_action", self.current_language),
+            self.current_language,
         ):
             return
         try:
@@ -1346,22 +1395,25 @@ class PboBuilderPage(QWidget):
                 temp, self.log_lines.append, self.source_root_row.text(), self.output_root_row.text()
             )
         except (BuildError, OSError) as exc:
-            QMessageBox.critical(self, APP_TITLE, str(exc))
+            self._notify("error", str(exc))
         else:
-            QMessageBox.information(self, APP_TITLE, _t("all_temp_cleared", self.current_language))
+            self._notify("success", _t("all_temp_cleared", self.current_language))
 
     def clear_build_cache_from_ui(self) -> None:
         if self.is_busy():
-            QMessageBox.warning(self, APP_TITLE, _t("cannot_clear_cache", self.current_language))
+            self._notify("warning", _t("cannot_clear_cache", self.current_language))
             return
         selected = self.get_selected_addon_names()
         source = self.source_root_row.text()
         if not selected:
-            QMessageBox.warning(self, APP_TITLE, _t("select_addon", self.current_language))
+            self._notify("warning", _t("select_addon", self.current_language))
             return
-        if (
-            QMessageBox.question(self, APP_TITLE, _t("clear_cache_confirm", self.current_language))
-            != QMessageBox.StandardButton.Yes
+        if not _confirm(
+            self,
+            _t("clear_cache_title", self.current_language),
+            _t("clear_cache_confirm", self.current_language),
+            _t("clear_cache_action", self.current_language),
+            self.current_language,
         ):
             return
         cache = load_build_cache()
@@ -1377,7 +1429,7 @@ class PboBuilderPage(QWidget):
         else:
             cache.pop(root_key, None)
         save_build_cache(cache)
-        QMessageBox.information(self, APP_TITLE, _t("cache_cleared", self.current_language, count=cleared))
+        self._notify("success", _t("cache_cleared", self.current_language, count=cleared))
 
     def open_logs_folder(self) -> None:
         _open_path(self, str(get_logs_dir()))
@@ -1385,7 +1437,7 @@ class PboBuilderPage(QWidget):
     def open_latest_log(self) -> None:
         logs = list(get_logs_dir().glob("build_*.log"))
         if not logs:
-            QMessageBox.information(self, APP_TITLE, _t("no_build_logs", self.current_language))
+            self._notify("info", _t("no_build_logs", self.current_language))
             return
         _open_path(self, str(max(logs, key=lambda path: path.stat().st_mtime)))
 

@@ -1,10 +1,16 @@
 from pathlib import Path
+from unittest.mock import Mock
 
 from PySide6.QtWidgets import QScrollArea, QSplitter
 
 from core.settings import Settings
 from ui import pbo_builder
 from ui.pbo_builder import PboBuilderPage, SettingsDialog
+
+
+def test_builder_internal_translation_keys_match():
+    assert set(pbo_builder.TEXT["ru"]) == set(pbo_builder.TEXT["en"])
+    assert pbo_builder.APP_TITLE == "RaiZo Tools — PBO Builder"
 
 
 def test_builder_tab_matches_original_two_panel_layout(qtbot, monkeypatch, tmp_path):
@@ -54,6 +60,19 @@ def test_builder_settings_expose_context_menu_controls(qtbot, monkeypatch):
     qtbot.addWidget(dialog)
 
     assert "не установлен" in dialog.context_menu_status.text().lower()
+
+
+def test_builder_validation_uses_in_app_notification(qtbot, monkeypatch):
+    settings = Settings(first_run_done=True)
+    monkeypatch.setattr(Settings, "save", lambda self: None)
+    page = PboBuilderPage(settings)
+    qtbot.addWidget(page)
+    notice = Mock()
+    page._notify = notice
+
+    page.clear_build_cache_from_ui()
+
+    notice.assert_called_once_with("warning", "Выберите хотя бы один аддон.")
 
 
 def test_source_rows_keep_path_history(qtbot, monkeypatch, tmp_path):

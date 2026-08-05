@@ -30,21 +30,79 @@ def test_restore_ignores_reused_pid(monkeypatch):
     shown.assert_not_called()
 
 
-def test_quit_restores_window_before_closing():
+def test_prepare_quit_restores_window():
     order = []
     win = cast(
         MainWindow,
         SimpleNamespace(
             _quitting=False,
             _restore_hidden_server_window=lambda: order.append("restore"),
-            close=lambda: order.append("close"),
         ),
     )
 
+    assert MainWindow._prepare_quit(win) is True
+
+    assert order == ["restore"]
+    assert win._quitting is True
+
+
+def test_quit_closes_after_successful_preparation():
+    prepare = Mock(return_value=True)
+    close = Mock()
+    win = cast(MainWindow, SimpleNamespace(_prepare_quit=prepare, close=close))
+
     MainWindow.quit_app(win)
 
-    assert order == ["restore", "close"]
-    assert win._quitting is True
+    prepare.assert_called_once_with()
+    close.assert_called_once_with()
+
+
+def test_close_button_quits_on_first_click_when_setting_is_enabled(monkeypatch):
+    event = Mock()
+    prepare = Mock(return_value=True)
+    app_quit = Mock()
+    monkeypatch.setattr("ui.main_window.QApplication.quit", app_quit)
+    win = cast(
+        MainWindow,
+        SimpleNamespace(
+            _quitting=False,
+            settings=SimpleNamespace(quit_on_close=True),
+            _prepare_quit=prepare,
+            mini=SimpleNamespace(close=Mock()),
+            packlog_window=SimpleNamespace(close=Mock()),
+            tray=SimpleNamespace(hide=Mock()),
+            log_server=SimpleNamespace(close=Mock()),
+            log_client=SimpleNamespace(close=Mock()),
+        ),
+    )
+
+    MainWindow.closeEvent(win, event)
+
+    prepare.assert_called_once_with()
+    event.ignore.assert_not_called()
+    event.accept.assert_called_once_with()
+    app_quit.assert_called_once_with()
+
+
+def test_close_button_minimizes_to_tray_by_default():
+    event = Mock()
+    hide = Mock()
+    show_mini = Mock()
+    win = cast(
+        MainWindow,
+        SimpleNamespace(
+            _quitting=False,
+            settings=SimpleNamespace(quit_on_close=False),
+            hide=hide,
+            mini=SimpleNamespace(show_at_saved_pos=show_mini),
+        ),
+    )
+
+    MainWindow.closeEvent(win, event)
+
+    event.ignore.assert_called_once_with()
+    hide.assert_called_once_with()
+    show_mini.assert_called_once_with()
 
 
 def test_adopted_server_is_hidden_when_setting_is_enabled(monkeypatch):

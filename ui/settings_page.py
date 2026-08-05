@@ -251,6 +251,16 @@ class SettingsPage(QScrollArea):
         upd_row.addWidget(b_check_now)
         form_general.addRow(BodyLabel(tr("settings.updates_label", "Обновления")), upd_row)
 
+        self.quit_on_close = CheckBox(tr("settings.quit_on_close", "Полностью закрывать программу по крестику"))
+        self.quit_on_close.setChecked(settings.quit_on_close)
+        self.quit_on_close.setToolTip(
+            tr(
+                "settings.quit_on_close_tip",
+                "Если выключено, крестик сворачивает RaiZo Tools в системный трей.",
+            )
+        )
+        form_general.addRow(BodyLabel(tr("settings.close_button", "Кнопка закрытия")), self.quit_on_close)
+
         # ------------------------------------------------- Клиент и сервер
         self.stop_method = ComboBox()
         self.stop_method.addItem(tr("settings.stop_soft", "Мягко — попросить закрыться"), userData="soft")
@@ -653,6 +663,7 @@ class SettingsPage(QScrollArea):
         return {
             "language": self.lang.currentData(),
             "check_updates": self.check_updates.isChecked(),
+            "quit_on_close": self.quit_on_close.isChecked(),
             "stop_method": self.stop_method.currentData(),
             "project_prefix": self.project_prefix.text().strip(),
             "client_stable": self.p_client.text(),
