@@ -2008,9 +2008,8 @@ class MainWindow(FluentWindow):
         self.activateWindow()
         self.raise_()
 
-    def quit_app(self) -> None:
-        """Настоящий выход. Запущенный сервер намеренно не трогаем: это
-        отдельный процесс, и он должен пережить закрытие менеджера."""
+    def _prepare_quit(self) -> bool:
+        """Проверяет возможность выхода и готовит состояние без повторного close()."""
         builder = getattr(self, "pbo_builder", None)
         if builder is not None and builder.is_busy():
             self.switchTo(builder)
@@ -2020,17 +2019,28 @@ class MainWindow(FluentWindow):
                 duration=5000,
                 parent=self,
             )
-            return
+            return False
         self._restore_hidden_server_window()
         self._quitting = True
-        self.close()
+        return True
+
+    def quit_app(self) -> None:
+        """Настоящий выход. Запущенный сервер намеренно не трогаем: это
+        отдельный процесс, и он должен пережить закрытие менеджера."""
+        if self._prepare_quit():
+            self.close()
 
     def closeEvent(self, event) -> None:  # имя метода задаёт Qt
         if not self._quitting:
-            event.ignore()
-            self.hide()
-            self.mini.show_at_saved_pos()
-            return
+            if self.settings.quit_on_close:
+                if not self._prepare_quit():
+                    event.ignore()
+                    return
+            else:
+                event.ignore()
+                self.hide()
+                self.mini.show_at_saved_pos()
+                return
         self.mini.close()
         self.packlog_window.close()
         self.tray.hide()

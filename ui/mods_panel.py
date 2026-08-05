@@ -22,7 +22,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize, QStandardPaths, QDir
+from PySide6.QtCore import Qt, QThread, Signal, QUrl, QSize
 from PySide6.QtGui import QColor, QFont, QDesktopServices
 from PySide6.QtWidgets import (
     QWidget,
@@ -32,8 +32,6 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QMenu,
     QFileDialog,
-    QListView,
-    QTreeView,
     QAbstractItemView,
     QScrollArea,
     QListWidgetItem,
@@ -425,35 +423,7 @@ class DependencyPickerDialog(ThemedDialog):
         return list(self._checked)
 
 
-_SIDEBAR_LOCATIONS = (
-    QStandardPaths.StandardLocation.DesktopLocation,
-    QStandardPaths.StandardLocation.DocumentsLocation,
-    QStandardPaths.StandardLocation.DownloadLocation,
-    QStandardPaths.StandardLocation.HomeLocation,
-)
 _MAX_RECENT_DIRS = 8
-
-
-def _sidebar_urls(settings: Settings | None) -> list[QUrl]:
-    """Стандартные папки + диски (включая subst, напр. P:) + недавно
-    выбранные сорсы — недативный Qt-диалог, в отличие от нативного, не
-    получает эту боковую панель от системы автоматически."""
-    urls: list[QUrl] = []
-    seen: set[str] = set()
-
-    def add(path: str) -> None:
-        if path and path not in seen and Path(path).is_dir():
-            seen.add(path)
-            urls.append(QUrl.fromLocalFile(path))
-
-    for loc in _SIDEBAR_LOCATIONS:
-        add(QStandardPaths.writableLocation(loc))
-    for fi in QDir.drives():
-        add(fi.absoluteFilePath())
-    if settings:
-        for p in settings.recent_source_dirs:
-            add(p)
-    return urls
 
 
 def _remember_recent_dirs(settings: Settings | None, picked: list[str]) -> None:
@@ -472,33 +442,14 @@ def _remember_recent_dirs(settings: Settings | None, picked: list[str]) -> None:
     settings.save()
 
 
-def pick_multiple_directories(parent, caption: str, settings: Settings | None = None) -> list[str]:
-    """Выбор нескольких папок разом — обычный QFileDialog умеет только одну.
-
-    Windows не даёт нативный диалог с множественным выбором папок (это
-    возможно только через отдельный COM API IFileOpenDialog), поэтому это —
-    недативный Qt-диалог + режим множественного выбора у внутренних
-    view-виджетов (Ctrl/Shift+клик и обычное рамочное выделение работают
-    «из коробки», это стандартное поведение ExtendedSelection). Боковая
-    панель заполняется вручную (см. _sidebar_urls) — недативный диалог не
-    получает её от системы, в отличие от нативного.
-    """
-    dlg = QFileDialog(parent, caption)
-    dlg.setFileMode(QFileDialog.FileMode.Directory)
-    dlg.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-    dlg.setOption(QFileDialog.Option.ShowDirsOnly, True)
-    dlg.setOption(QFileDialog.Option.HideNameFilterDetails, True)
-    dlg.setViewMode(QFileDialog.ViewMode.Detail)
-    dlg.setSidebarUrls(_sidebar_urls(settings))
-    for view_type in (QListView, QTreeView):
-        view = dlg.findChild(view_type)
-        if view:
-            view.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-    if dlg.exec():
-        picked = dlg.selectedFiles()
-        _remember_recent_dirs(settings, picked)
-        return picked
-    return []
+def pick_source_directory(parent, caption: str, settings: Settings | None = None) -> str:
+    """Нативный выбор папки Windows с адресной строкой и ручным вводом пути."""
+    candidates = [*(settings.recent_source_dirs if settings else []), "P:/", str(Path.home())]
+    start = next((path for path in candidates if Path(path).is_dir()), "")
+    picked = QFileDialog.getExistingDirectory(parent, caption, start, QFileDialog.Option.ShowDirsOnly)
+    if picked:
+        _remember_recent_dirs(settings, [picked])
+    return picked
 
 
 class SourcesDialog(ThemedDialog):
@@ -522,8 +473,8 @@ class SourcesDialog(ThemedDialog):
         self.lst.addItems(mod.sources)
         layout.addWidget(self.lst, 1)
         btns = QHBoxLayout()
-        b_add = PushButton(FIF.ADD, tr("mods.sources_add", "Добавить папки…"))
-        b_add.setToolTip(tr("mods.sources_add_tip", "Можно выбрать сразу несколько папок (Ctrl/Shift+клик)."))
+        b_add = PushButton(FIF.ADD, tr("mods.sources_add", "Добавить папку…"))
+        b_add.setToolTip(tr("mods.sources_add_tip", "Для нескольких PBO добавьте каждую папку отдельно."))
         b_del = PushButton(FIF.REMOVE, tr("mods.sources_del", "Убрать выбранную"))
         b_ok = PrimaryPushButton("OK")
         b_add.clicked.connect(self._add)
@@ -537,10 +488,9 @@ class SourcesDialog(ThemedDialog):
 
     def _add(self) -> None:
         existing = {self.lst.item(i).text() for i in range(self.lst.count())}
-        for p in pick_multiple_directories(self, tr("mods.sources_pick", "Папки сорсов"), self.settings):
-            if p not in existing:
-                self.lst.addItem(p)
-                existing.add(p)
+        picked = pick_source_directory(self, tr("mods.sources_pick", "Папка сорсов"), self.settings)
+        if picked and picked not in existing:
+            self.lst.addItem(picked)
 
     def sources(self) -> list[str]:
         return [self.lst.item(i).text() for i in range(self.lst.count())]
