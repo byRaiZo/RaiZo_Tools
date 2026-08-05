@@ -1829,7 +1829,7 @@ class MainWindow(FluentWindow):
 
     def _on_manual_checked(self, rel) -> None:
         if updater.is_update(rel):
-            self._on_update_checked(rel)
+            self._on_update_checked(rel, offer=False)
             self._open_update()
         elif rel is None:
             self._notify(
@@ -1844,15 +1844,23 @@ class MainWindow(FluentWindow):
                 tr("upd.uptodate_body", "Версия {v}", v=VERSION),
             )
 
-    def _on_update_checked(self, rel) -> None:
+    def _on_update_checked(self, rel, *, offer: bool = True) -> None:
         # None — нет сети, нет релизов или репозиторий закрыт: молчим
         if not updater.is_update(rel):
             return
         self._upd_release = rel
         self._upd_state = "available"
         self._update_nav_item()
-        # окно само не открываем: человек мог запускать сервер в спешке.
-        # Пункт в навигации виден постоянно — этого достаточно.
+        if offer and self.settings.update_seen != rel.version:
+            # Сигнал фонового потока уже пришёл в GUI-поток, но откладываем
+            # модальное окно до следующего такта, чтобы завершить обработчик.
+            QTimer.singleShot(0, lambda version=rel.version: self._open_unseen_update(version))
+
+    def _open_unseen_update(self, version: str) -> None:
+        """Показывает найденную версию один раз, если она всё ещё актуальна."""
+        rel = self._upd_release
+        if rel and rel.version == version and self.settings.update_seen != version:
+            self._open_update()
 
     def _update_nav_item(self) -> None:
         """Подпись и цвет пункта под текущее состояние."""
