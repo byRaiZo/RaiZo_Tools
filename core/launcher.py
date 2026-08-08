@@ -21,9 +21,10 @@ from .params import default_params, specs_for, SERVER, CLIENT
 from .presets import ServerPreset, MODE_DIAG
 from .settings import Settings
 
-PROC_NAMES = {"dayz_x64.exe", "dayzdiag_x64.exe", "dayzserver_x64.exe"}
+PROC_NAMES = {"dayz_x64.exe", "dayzdiag_x64.exe", "dayzserver_x64.exe", "dayz_be.exe"}
 
 READY_TIMEOUT = 180  # секунд ждём, пока сервер займёт UDP-порт
+CLIENT_SPAWN_TIMEOUT = 30  # секунд ждём DayZ_x64 после запуска BattlEye
 
 
 def dayz_running() -> bool:
@@ -44,6 +45,7 @@ def dayz_running() -> bool:
 SERVER_EXE_NAME = "dayzserver_x64.exe"
 CLIENT_EXE_NAME = "dayz_x64.exe"
 DIAG_EXE_NAME = "dayzdiag_x64.exe"
+BATTLEYE_EXE_NAME = "dayz_be.exe"
 
 
 def parse_extra_args(command_line: str) -> list[str]:
@@ -298,6 +300,23 @@ def build_client_command(
     return exe, args, client_root
 
 
+def build_client_launch_command(
+    preset: ServerPreset, settings: Settings, branch: str, registry: ModRegistry
+) -> tuple[str, list[str], str]:
+    """Команда, которую нужно запустить для создания клиента DayZ.
+
+    Обычный клиент Dedicated-сервера обязан стартовать через ``DayZ_BE.exe``:
+    он поднимает BattlEye и затем создаёт настоящий ``DayZ_x64.exe``. Для
+    сопоставления, остановки и подхвата процесса по-прежнему используется
+    :func:`build_client_command`, описывающая именно конечный процесс игры.
+    Diag-клиент запускается напрямую и BattlEye не использует.
+    """
+    runtime_exe, args, cwd = build_client_command(preset, settings, branch, registry)
+    if Path(runtime_exe).name.casefold() == CLIENT_EXE_NAME:
+        return str(Path(cwd) / "DayZ_BE.exe"), args, cwd
+    return runtime_exe, args, cwd
+
+
 def _path_key(path: str) -> str:
     return os.path.normcase(os.path.abspath(path))
 
@@ -333,6 +352,35 @@ def _matches_command(proc: psutil.Process, kind: str, command: tuple[str, list[s
             return False
         return _arg_path(args, "-config=", cwd) == _arg_path(expected_args, "-config=", expected_cwd)
     return _arg_value(args, "-connect=").lower() == _arg_value(expected_args, "-connect=").lower()
+
+
+def _wait_for_matching_process(
+    kind: str,
+    command: tuple[str, list[str], str],
+    excluded_pids: set[int] | None = None,
+    *,
+    timeout: float = CLIENT_SPAWN_TIMEOUT,
+) -> psutil.Process | None:
+    """Ждёт конечный процесс, созданный промежуточным лаунчером.
+
+    ``DayZ_BE.exe`` не является самим клиентом и может завершиться сразу после
+    передачи управления. Возвращаем новый ``DayZ_x64.exe`` с точными
+    аргументами выбранного пресета, не принимая уже существующий процесс.
+    """
+    excluded = excluded_pids or set()
+    deadline = time.monotonic() + max(timeout, 0)
+    while True:
+        for proc in psutil.process_iter(["name"]):
+            try:
+                if proc.pid in excluded or (proc.info["name"] or "").lower() not in PROC_NAMES:
+                    continue
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if _matches_command(proc, kind, command):
+                return proc
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.1)
 
 
 def matching_processes(
@@ -722,8 +770,34 @@ class LaunchWorker(QThread):
                     )
                 )
                 return
-            exe, args, cwd = build_client_command(p, s, self.branch, reg)
-            client_proc = subprocess.Popen([exe] + args, cwd=cwd)
-            self.client_started.emit(client_proc.pid)
+            runtime_command = build_client_command(p, s, self.branch, reg)
+            launch_exe, args, cwd = build_client_launch_command(p, s, self.branch, reg)
+            runtime_exe = runtime_command[0]
+            if _path_key(launch_exe) == _path_key(runtime_exe):
+                client_proc = subprocess.Popen([launch_exe] + args, cwd=cwd)
+                client_pid = client_proc.pid
+            else:
+                # BattlEye — промежуточный процесс. Запоминаем прежние точные
+                # совпадения, чтобы после запуска получить PID именно нового
+                # DayZ_x64, а не случайно подхватить старый экземпляр.
+                previous = {proc.pid for proc in matching_processes(p, s, self.branch, reg, {"client"})}
+                battleye = subprocess.Popen([launch_exe] + args, cwd=cwd)
+                client_proc = _wait_for_matching_process("client", runtime_command, previous)
+                if client_proc is None:
+                    try:
+                        if battleye.poll() is None:
+                            battleye.terminate()
+                    except OSError:
+                        pass
+                    self.failed.emit(
+                        tr(
+                            "launch.client_be_failed",
+                            "BattlEye не запустил DayZ_x64 за {sec} с.",
+                            sec=CLIENT_SPAWN_TIMEOUT,
+                        )
+                    )
+                    return
+                client_pid = client_proc.pid
+            self.client_started.emit(client_pid)
 
         self.finished_ok.emit()

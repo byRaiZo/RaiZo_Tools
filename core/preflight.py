@@ -52,9 +52,18 @@ def run_checks(preset: ServerPreset, settings: Settings, branch: str, registry: 
             crit("server_exe", tr("check.server_exe", "DayZServer_x64.exe не найден в {p}", p=server_root))
 
     if preset.launch_client:
-        exe = "DayZDiag_x64.exe" if (preset.mode == MODE_DIAG or preset.client_use_diag) else "DayZ_x64.exe"
-        if not (Path(client_root) / exe).is_file():
-            crit("client_exe", tr("check.client_exe", "{exe} не найден в {p}", exe=exe, p=client_root))
+        use_diag = preset.mode == MODE_DIAG or preset.client_use_diag
+        executables = (
+            (("client_exe", "DayZDiag_x64.exe"),)
+            if use_diag
+            else (
+                ("client_exe", "DayZ_x64.exe"),
+                ("client_be_exe", "DayZ_BE.exe"),
+            )
+        )
+        for check_id, exe in executables:
+            if not (Path(client_root) / exe).is_file():
+                crit(check_id, tr("check.client_exe", "{exe} не найден в {p}", exe=exe, p=client_root))
 
     # Пути пресета
     from .layout import resolve_config, resolve_profiles

@@ -356,26 +356,30 @@ class SettingsPage(QScrollArea):
         steam_hint.setWordWrap(True)
         form_steam.addRow("", steam_hint)
 
-        # ------------------------------------------------------------ Запаковка
-        form_pack = section(tr("settings.section_pack", "Запаковка модов"))
+        # ------------------------------------------------------ Автоперепаковка
+        form_pack = section(tr("settings.section_pack", "Автоперепаковка модов"))
         self._pack_flags = settings.pack_flags
         self._clean_meta = settings.clean_meta
 
-        self.b_pbo_settings = PushButton(FIF.SETTING, tr("settings.pbo_settings", "Настройки PBO Builder byRaiZo"))
+        self.b_pbo_settings = PushButton(FIF.SETTING, tr("settings.pbo_settings", "Общие параметры сборки PBO"))
         self.b_pbo_settings.clicked.connect(self._open_pbo_settings)
-        form_pack.addRow(BodyLabel(tr("settings.pbo_settings_label", "Запаковка PBO")), self.b_pbo_settings)
+        form_pack.addRow(BodyLabel(tr("settings.pbo_settings_label", "Этапы и инструменты")), self.b_pbo_settings)
 
         self.pack_engine = ComboBox()
-        self.pack_engine.addItem(tr("settings.engine_normal", "Обычная — переиспользует temp"), userData="normal")
-        self.pack_engine.addItem(tr("settings.engine_full", "Полная (FullBuild) — чистит temp"), userData="full")
+        self.pack_engine.addItem(
+            tr("settings.engine_normal", "Быстрая — собирать только изменённое"), userData="normal"
+        )
+        self.pack_engine.addItem(
+            tr("settings.engine_full", "Полная — очистить temp и пересобрать всё"), userData="full"
+        )
         self.pack_engine.setCurrentIndex(1 if settings.pack_engine == "full" else 0)
         self.pack_engine.setToolTip(
             tr(
                 "settings.engine_tip",
-                "Обычная переиспользует содержимое temp и собирает за секунды; полная чистит temp и пересобирает всё.",
+                "Быстрая использует инкрементальный кеш; полная очищает временные файлы и пересобирает всё.",
             )
         )
-        form_pack.addRow(BodyLabel(tr("settings.engine_label", "Способ запаковки модов")), self.pack_engine)
+        form_pack.addRow(BodyLabel(tr("settings.engine_label", "Режим автоперепаковки")), self.pack_engine)
 
         self.p_tools.edit.textChanged.connect(self._update_pbo_button_state)
         self._update_pbo_button_state()
@@ -535,11 +539,19 @@ class SettingsPage(QScrollArea):
     def _update_pbo_button_state(self) -> None:
         """Встроенный packer доступен всегда; DayZ Tools нужны по выбранным опциям."""
         self.b_pbo_settings.setEnabled(True)
-        self.b_pbo_settings.setToolTip("Preflight, Binarize, CfgConvert, подпись, cache и rollback.")
+        self.b_pbo_settings.setToolTip(
+            tr(
+                "settings.pbo_settings_tip",
+                "Общие параметры автоперепаковки и отдельной вкладки PBO Builder.",
+            )
+        )
         for i in range(self.pack_engine.count()):
             self.pack_engine.setItemEnabled(i, True)
         self.pack_engine.setToolTip(
-            tr("settings.engine_tip", "Обычная использует cache; полная пересобирает выбранные addon.")
+            tr(
+                "settings.engine_tip",
+                "Быстрая использует инкрементальный кеш; полная очищает временные файлы и пересобирает всё.",
+            )
         )
 
     def _show_filepatch_help(self) -> None:
