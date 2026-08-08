@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import cast
 
-from core.launcher import build_client_command, build_server_command
+from core.launcher import build_client_command, build_client_launch_command, build_server_command
 from core.preflight import run_checks
 from core.layout import (
     create_server_config,
@@ -164,3 +164,51 @@ def test_relative_standard_and_diag_commands(tmp_path):
         "-window",
     ):
         assert expected_arg in client_args
+
+
+def test_dedicated_client_starts_through_battleye_launcher(tmp_path):
+    settings = settings_for(tmp_path)
+    registry = cast(ModRegistry, EmptyRegistry())
+    preset = ServerPreset(mode=MODE_DEDICATED, launch_server=False, launch_client=True)
+
+    runtime_exe, runtime_args, runtime_cwd = build_client_command(preset, settings, "stable", registry)
+    launch_exe, launch_args, launch_cwd = build_client_launch_command(preset, settings, "stable", registry)
+
+    assert Path(runtime_exe).name == "DayZ_x64.exe"
+    assert Path(launch_exe).name == "DayZ_BE.exe"
+    assert launch_args == runtime_args
+    assert launch_cwd == runtime_cwd
+
+    preset.client_use_diag = True
+    runtime_exe, _runtime_args, _runtime_cwd = build_client_command(preset, settings, "stable", registry)
+    launch_exe, _launch_args, _launch_cwd = build_client_launch_command(preset, settings, "stable", registry)
+
+    assert Path(runtime_exe).name == "DayZDiag_x64.exe"
+    assert launch_exe == runtime_exe
+
+
+def test_preflight_requires_battleye_launcher_for_dedicated_client(tmp_path):
+    settings = settings_for(tmp_path)
+    registry = cast(ModRegistry, EmptyRegistry())
+    client = tmp_path / "DayZ"
+    server = tmp_path / "DayZServer"
+    mission = server / "mpmissions" / "dayzOffline.chernarusplus"
+    client.mkdir()
+    mission.mkdir(parents=True)
+    (client / "DayZ_x64.exe").touch()
+    (server / "DayZServer_x64.exe").touch()
+    (server / "serverDZ.cfg").touch()
+    preset = ServerPreset(
+        mode=MODE_DEDICATED,
+        server_config="serverDZ.cfg",
+        mission="dayzOffline.chernarusplus",
+        launch_server=False,
+        launch_client=True,
+    )
+
+    problems = run_checks(preset, settings, "stable", registry)
+    assert "client_be_exe" in {problem.check_id for problem in problems}
+
+    (client / "DayZ_BE.exe").touch()
+    problems = run_checks(preset, settings, "stable", registry)
+    assert "client_be_exe" not in {problem.check_id for problem in problems}

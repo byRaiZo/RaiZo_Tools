@@ -105,6 +105,32 @@ def test_process_matching_does_not_select_other_port(monkeypatch, tmp_path):
     assert [process.pid for process in found] == [10]
 
 
+def test_wait_for_battleye_runtime_returns_new_matching_client(monkeypatch, tmp_path):
+    client_root = tmp_path / "DayZ"
+    command = (
+        str(client_root / "DayZ_x64.exe"),
+        ["-connect=127.0.0.1:2302"],
+        str(client_root),
+    )
+    old = FakeProcess(
+        20,
+        client_root / "DayZ_x64.exe",
+        ["DayZ_x64.exe", "-connect=127.0.0.1:2302"],
+        client_root,
+    )
+    started = FakeProcess(
+        21,
+        client_root / "DayZ_x64.exe",
+        ["DayZ_x64.exe", "-connect=127.0.0.1:2302"],
+        client_root,
+    )
+    monkeypatch.setattr(launcher.psutil, "process_iter", lambda _attrs: [old, started])
+
+    found = launcher._wait_for_matching_process("client", command, {20}, timeout=0)
+
+    assert found is started
+
+
 def test_soft_stop_posts_wm_close_before_force(monkeypatch):
     process = StoppableProcess(30)
     closed = []

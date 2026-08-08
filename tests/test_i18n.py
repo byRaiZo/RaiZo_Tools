@@ -12,5 +12,5 @@ def test_translation_keys_match():
 def test_pbo_builder_name_is_used_in_russian_ui():
     path = Path(__file__).resolve().parents[1] / "lang" / "ru.json"
     strings = json.loads(path.read_text(encoding="utf-8"))
-    assert strings["settings.pbo_settings"] == "Настройки PBO Builder"
+    assert strings["settings.pbo_settings"] == "Общие параметры сборки PBO"
     assert strings["pbo.title"] == "Настройки PBO Builder"

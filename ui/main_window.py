@@ -200,14 +200,18 @@ class LaunchInterface(QWidget):
         # три состояния: выключено, инкрементальная и полная сборка
         self.pack_engine = ComboBox()
         self.pack_engine.addItem(tr("main.repack_off", "Не перепаковывать"), userData="")
-        self.pack_engine.addItem(tr("settings.engine_normal", "Обычная — переиспользует temp"), userData="normal")
-        self.pack_engine.addItem(tr("settings.engine_full", "Полная (FullBuild) — чистит temp"), userData="full")
+        self.pack_engine.addItem(
+            tr("settings.engine_normal", "Быстрая — собирать только изменённое"), userData="normal"
+        )
+        self.pack_engine.addItem(
+            tr("settings.engine_full", "Полная — очистить temp и пересобрать всё"), userData="full"
+        )
         row_pack.addWidget(self.pack_engine, 1)
         self.btn_pack_settings = TransparentToolButton(FIF.SETTING)
         self.btn_pack_settings.setToolTip(
             tr(
                 "main.pack_settings_tip",
-                "Настройки PBO Builder byRaiZo — те же, что в «Настройках», но под рукой. Сохраняются сразу.",
+                "Общие параметры автоперепаковки и отдельной вкладки PBO Builder. Сохраняются сразу.",
             )
         )
         row_pack.addWidget(self.btn_pack_settings)
