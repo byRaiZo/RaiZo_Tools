@@ -194,7 +194,7 @@
   "flags.title": "Mod flags",
   "flags.underline": "Underline",
   "launch.admin_rights": "{tool}: admin rights granted ({n})",
-  "launch.client_be_failed": "BattlEye did not start DayZ_x64 within {sec} seconds.",
+  "launch.client_be_failed": "Could not identify the running DayZ_x64 within {sec} seconds. Check the game window.",
   "launch.junction_failed": "Failed to link mod {mod}: {err}",
   "launch.killed": "Old processes terminated: {n}",
   "launch.logs_cleared": "Log files removed: {n}",

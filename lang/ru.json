@@ -194,7 +194,7 @@
   "flags.title": "Флаги модов",
   "flags.underline": "Подчёркнутый",
   "launch.admin_rights": "{tool}: выданы права админа ({n})",
-  "launch.client_be_failed": "BattlEye не запустил DayZ_x64 за {sec} с.",
+  "launch.client_be_failed": "Не удалось определить запущенный DayZ_x64 за {sec} с. Проверьте окно игры.",
   "launch.junction_failed": "Не удалось подключить мод {mod}: {err}",
   "launch.killed": "Завершено старых процессов: {n}",
   "launch.logs_cleared": "Удалено файлов логов: {n}",

@@ -82,7 +82,11 @@ def parse_extra_args(command_line: str) -> list[str]:
 
 @dataclass(frozen=True, slots=True)
 class ProcessIdentity:
-    """Неизменяемая идентичность процесса для защиты от повторного PID."""
+    """Неизменяемая идентичность процесса для защиты от повторного PID.
+
+    Поля команды могут быть пустыми: BattlEye разрешает увидеть имя, путь и
+    время создания DayZ_x64, но блокирует чтение ``cmdline`` и ``cwd``.
+    """
 
     pid: int
     create_time: float
@@ -95,18 +99,48 @@ class ProcessIdentity:
 
 def _process_identity(proc: psutil.Process) -> ProcessIdentity | None:
     try:
-        args = proc.cmdline()
-        return ProcessIdentity(
-            pid=proc.pid,
-            create_time=proc.create_time(),
-            exe=_path_key(proc.exe()),
-            kind=_proc_kind(proc),
-            config=_arg_path(args, "-config=", proc.cwd()),
-            port=_arg_value(args, "-port="),
-            connect=_arg_value(args, "-connect=").casefold(),
-        )
+        pid = proc.pid
+        create_time = proc.create_time()
+        kind = _proc_kind(proc)
     except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
         return None
+    try:
+        exe = _path_key(proc.exe())
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+        exe = ""
+    try:
+        args = proc.cmdline()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+        args = []
+    try:
+        cwd = proc.cwd()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+        cwd = ""
+    return ProcessIdentity(
+        pid=pid,
+        create_time=create_time,
+        exe=exe,
+        kind=kind,
+        config=_arg_path(args, "-config=", cwd) if cwd else "",
+        port=_arg_value(args, "-port="),
+        connect=_arg_value(args, "-connect=").casefold(),
+    )
+
+
+def _identity_matches(expected: ProcessIdentity, current: ProcessIdentity | None) -> bool:
+    """Тот же процесс, даже если BattlEye скрыл часть данных после запуска."""
+    if current is None:
+        return False
+    if expected.pid != current.pid or expected.create_time != current.create_time or expected.kind != current.kind:
+        return False
+    if expected.exe and current.exe and expected.exe != current.exe:
+        return False
+    for field in ("config", "port", "connect"):
+        before = getattr(expected, field)
+        now = getattr(current, field)
+        if before and now and before != now:
+            return False
+    return True
 
 
 def capture_process_identity(pid: int | None) -> ProcessIdentity | None:
@@ -119,11 +153,11 @@ def capture_process_identity(pid: int | None) -> ProcessIdentity | None:
 
 
 def identity_is_current(identity: ProcessIdentity | None) -> bool:
-    """PID всё ещё принадлежит тому же EXE и той же DayZ-команде."""
+    """PID всё ещё принадлежит тому же процессу DayZ."""
     if identity is None:
         return False
     current = capture_process_identity(identity.pid)
-    return current == identity
+    return _identity_matches(identity, current)
 
 
 def _proc_kind(proc: psutil.Process) -> str | None:
@@ -163,7 +197,7 @@ def kill_pid(process: int | ProcessIdentity | None) -> bool:
         pid = process
     try:
         proc = psutil.Process(pid)
-        if identity is not None and _process_identity(proc) != identity:
+        if identity is not None and not _identity_matches(identity, _process_identity(proc)):
             return False
         proc.kill()
         proc.wait(timeout=5)
@@ -364,8 +398,9 @@ def _wait_for_matching_process(
     """Ждёт конечный процесс, созданный промежуточным лаунчером.
 
     ``DayZ_BE.exe`` не является самим клиентом и может завершиться сразу после
-    передачи управления. Возвращаем новый ``DayZ_x64.exe`` с точными
-    аргументами выбранного пресета, не принимая уже существующий процесс.
+    передачи управления. Обычно проверяем аргументы выбранного пресета. Если
+    BattlEye запрещает их читать, принимаем только новый ожидаемый EXE, которого
+    не было до запуска.
     """
     excluded = excluded_pids or set()
     deadline = time.monotonic() + max(timeout, 0)
@@ -376,11 +411,43 @@ def _wait_for_matching_process(
                     continue
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
-            if _matches_command(proc, kind, command):
+            if _matches_command(proc, kind, command) or (
+                kind == "client" and _matches_runtime_executable(proc, kind, command)
+            ):
                 return proc
         if time.monotonic() >= deadline:
             return None
         time.sleep(0.1)
+
+
+def _matches_runtime_executable(
+    proc: psutil.Process,
+    kind: str,
+    command: tuple[str, list[str], str],
+) -> bool:
+    """Совпадает конечный EXE, даже если BattlEye закрыл командную строку."""
+    expected_exe = command[0]
+    if _proc_kind(proc) != kind:
+        return False
+    try:
+        return _path_key(proc.exe()) == _path_key(expected_exe)
+    except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+        try:
+            return (proc.name() or "").casefold() == Path(expected_exe).name.casefold()
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+            return False
+
+
+def _runtime_process_pids(kind: str, command: tuple[str, list[str], str]) -> set[int]:
+    """Снимок всех конечных процессов до запуска промежуточного лаунчера."""
+    result: set[int] = set()
+    for proc in psutil.process_iter(["name"]):
+        try:
+            if _matches_runtime_executable(proc, kind, command):
+                result.add(proc.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied, OSError, AttributeError):
+            continue
+    return result
 
 
 def matching_processes(
@@ -777,10 +844,10 @@ class LaunchWorker(QThread):
                 client_proc = subprocess.Popen([launch_exe] + args, cwd=cwd)
                 client_pid = client_proc.pid
             else:
-                # BattlEye — промежуточный процесс. Запоминаем прежние точные
-                # совпадения, чтобы после запуска получить PID именно нового
+                # BattlEye — промежуточный процесс. Запоминаем все прежние
+                # процессы ожидаемого EXE, чтобы после запуска получить PID именно нового
                 # DayZ_x64, а не случайно подхватить старый экземпляр.
-                previous = {proc.pid for proc in matching_processes(p, s, self.branch, reg, {"client"})}
+                previous = _runtime_process_pids("client", runtime_command)
                 battleye = subprocess.Popen([launch_exe] + args, cwd=cwd)
                 client_proc = _wait_for_matching_process("client", runtime_command, previous)
                 if client_proc is None:
@@ -792,7 +859,7 @@ class LaunchWorker(QThread):
                     self.failed.emit(
                         tr(
                             "launch.client_be_failed",
-                            "BattlEye не запустил DayZ_x64 за {sec} с.",
+                            "Не удалось определить запущенный DayZ_x64 за {sec} с. Проверьте окно игры.",
                             sec=CLIENT_SPAWN_TIMEOUT,
                         )
                     )
