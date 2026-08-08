@@ -44,6 +44,16 @@ class FakeProcess:
         del timeout
 
 
+class ProtectedProcess(FakeProcess):
+    """Обычный DayZ_x64 под BattlEye: базовые данные видны, cmdline/cwd закрыты."""
+
+    def cmdline(self):
+        raise launcher.psutil.AccessDenied(self.pid)
+
+    def cwd(self):
+        raise launcher.psutil.AccessDenied(self.pid)
+
+
 class StoppableProcess:
     def __init__(self, pid: int):
         self.pid = pid
@@ -129,6 +139,40 @@ def test_wait_for_battleye_runtime_returns_new_matching_client(monkeypatch, tmp_
     found = launcher._wait_for_matching_process("client", command, {20}, timeout=0)
 
     assert found is started
+
+
+def test_wait_for_battleye_runtime_accepts_new_protected_client(monkeypatch, tmp_path):
+    client_root = tmp_path / "DayZ"
+    command = (
+        str(client_root / "DayZ_x64.exe"),
+        ["-connect=127.0.0.1:2302"],
+        str(client_root),
+    )
+    old = ProtectedProcess(20, client_root / "DayZ_x64.exe", [], client_root)
+    started = ProtectedProcess(21, client_root / "DayZ_x64.exe", [], client_root)
+    monkeypatch.setattr(launcher.psutil, "process_iter", lambda _attrs: [old, started])
+
+    assert launcher._runtime_process_pids("client", command) == {20, 21}
+    found = launcher._wait_for_matching_process("client", command, {20}, timeout=0)
+
+    assert found is started
+
+
+def test_protected_client_identity_uses_stable_base_fields(monkeypatch, tmp_path):
+    process = ProtectedProcess(22, tmp_path / "DayZ_x64.exe", [], tmp_path)
+    identity = launcher._process_identity(cast(launcher.psutil.Process, process))
+
+    assert identity is not None
+    assert identity.pid == 22
+    assert identity.create_time == 1.0
+    assert identity.exe == launcher._path_key(process.exe())
+    assert identity.kind == "client"
+    assert identity.connect == ""
+
+    monkeypatch.setattr(launcher.psutil, "Process", lambda _pid: process)
+    assert launcher.identity_is_current(identity) is True
+    assert launcher.kill_pid(identity) is True
+    assert process.killed is True
 
 
 def test_soft_stop_posts_wm_close_before_force(monkeypatch):
