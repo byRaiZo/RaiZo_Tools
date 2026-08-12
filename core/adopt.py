@@ -77,6 +77,7 @@ def _path_key(value: str, cwd: str = "") -> str:
 def find(
     preset_profiles: dict[str, str] | None = None,
     preset_identities: dict[str, tuple[str, int, str]] | None = None,
+    client_preset: str = "",
 ) -> list[Running]:
     """Все живые процессы DayZ; опознанные помечены именем пресета.
 
@@ -84,6 +85,8 @@ def find(
     одновременно по профилю, CFG, порту и полному пути EXE.
 
     preset_identities: {имя: (абсолютный CFG, порт, абсолютный EXE)}.
+    Клиент можно привязать к выбранному пресету без чтения его аргументов:
+    BattlEye закрывает ``cmdline`` уже после успешного запуска DayZ_x64.
     """
     profile_names: dict[str, set[str]] = {}
     for name, path in (preset_profiles or {}).items():
@@ -106,10 +109,13 @@ def find(
             exe = p.exe()
             started = p.create_time()
         except (psutil.AccessDenied, psutil.NoSuchProcess, OSError):
-            # чаще всего процесс от администратора, а мы — нет; показать факт
-            # запуска всё равно честнее, чем промолчать
+            # BattlEye закрывает cmdline/cwd обычного DayZ_x64. По имени EXE
+            # клиент всё равно определяется однозначно; Diag без аргументов
+            # остаётся сервером, поскольку там роль задаёт только -server.
             with contextlib.suppress(psutil.Error):
-                out.append(Running(pid=p.pid, side=SERVER, exe=(p.info["name"] or "")))
+                process_name = (p.info["name"] or "").lower()
+                side = CLIENT if process_name == "dayz_x64.exe" else SERVER
+                out.append(Running(pid=p.pid, side=side, exe=(p.info["name"] or "")))
             continue
 
         name = Path(exe).name.lower()
@@ -152,7 +158,15 @@ def find(
     # А вот «клиент подключён туда, где работает опознанный нами сервер» —
     # значит; заодно клиент достаётся тому же пресету, что и сервер.
     by_port = {r.port: r.preset for r in out if r.side == SERVER and r.preset and r.port}
+    fallback_used = False
     for r in out:
         if r.side == CLIENT:
-            r.preset = by_port.get(r.port, "")
+            matched = by_port.get(r.port, "")
+            if matched:
+                r.preset = matched
+            elif client_preset and not fallback_used:
+                # Обычный клиент может работать без запущенного нами сервера.
+                # Пользователь допускает подхват единственного DayZ-клиента.
+                r.preset = client_preset
+                fallback_used = True
     return out

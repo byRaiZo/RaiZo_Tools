@@ -697,9 +697,9 @@ class MainWindow(FluentWindow):
         запустить и молчал про занятый порт. Человек либо поднимал второй сервер
         поверх первого, либо шёл убивать процесс через диспетчер.
 
-        Опознание идёт по командной строке процесса, см. core.adopt. Чужой
-        сервер не трогаем, но сообщаем о нём: упереться в занятый порт и не
-        понять почему — худшее из состояний.
+        Сервер строго опознаётся по аргументам, см. core.adopt. Клиент
+        подхватывается по DayZ_x64.exe и выбранному пресету, потому что
+        BattlEye закрывает его командную строку. Чужой сервер не трогаем.
         """
         from core import adopt
         from core.layout import resolve_config, resolve_profiles
@@ -718,7 +718,7 @@ class MainWindow(FluentWindow):
                 exe = str(Path(self.settings.server_root(p.branch)) / "DayZServer_x64.exe")
             identities[p.name] = (config, p.port, exe)
         try:
-            found = adopt.find(profiles, identities)
+            found = adopt.find(profiles, identities, self.current.name if self.current else "")
         except Exception as e:  # noqa: BLE001 — подхват не обязан ронять запуск окна
             self._append_log(tr("adopt.failed", "Не удалось опросить процессы: {e}", e=e), "warning")
             return
