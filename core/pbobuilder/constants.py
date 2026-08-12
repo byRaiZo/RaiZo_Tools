@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 APP_TITLE = "PBO Builder(byRaiZo)"
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"
 APP_AUTHOR = "RaiZo"
 APP_LICENSE_NAME = "GPLv3 (embedded in RaiZo Tools)"
 APP_LICENSE_TEXT = """PBO Builder(byRaiZo) embedded component

@@ -175,6 +175,18 @@ def test_protected_client_identity_uses_stable_base_fields(monkeypatch, tmp_path
     assert process.killed is True
 
 
+def test_adoption_accepts_protected_client_for_selected_preset(monkeypatch, tmp_path):
+    process = ProtectedProcess(23, tmp_path / "DayZ" / "DayZ_x64.exe", [], tmp_path)
+    monkeypatch.setattr(adopt, "_processes", lambda: [process])
+
+    found = adopt.find(client_preset="Selected")
+
+    assert len(found) == 1
+    assert found[0].pid == 23
+    assert found[0].side == adopt.CLIENT
+    assert found[0].preset == "Selected"
+
+
 def test_soft_stop_posts_wm_close_before_force(monkeypatch):
     process = StoppableProcess(30)
     closed = []
