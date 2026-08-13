@@ -122,3 +122,28 @@ def test_builder_tab_routes_server_addon_to_server_output(qtbot, monkeypatch, tm
     assert config.selected_addons == ("Admin_SERVER",)
     assert config.output_root_dir == str(client_output)
     assert config.output_server_root_dir == str(server_output)
+
+
+def test_builder_tab_uses_client_output_for_server_when_separate_output_is_empty(qtbot, monkeypatch, tmp_path):
+    source_root = tmp_path / "sources"
+    source = source_root / "Admin_SERVER"
+    source.mkdir(parents=True)
+    (source / "config.cpp").write_text("class CfgPatches {};", encoding="utf-8")
+    output = tmp_path / "@Combined"
+    settings = Settings(
+        pack_use_binarize=False,
+        pack_convert_config=False,
+        pbo_last_source_root=str(source_root),
+        pbo_last_output_root=str(output),
+        pbo_last_output_server_root="",
+    )
+    monkeypatch.setattr(Settings, "save", lambda self: None)
+    monkeypatch.setattr(pbo_builder, "get_logs_dir", lambda: Path(tmp_path / "logs"))
+
+    page = PboBuilderPage(settings)
+    qtbot.addWidget(page)
+    page.select_all_addons()
+    config = page._config()
+
+    assert page.output_root_server_row.combo.currentText() == "Как вывод client"
+    assert config.output_server_root_dir == str(output)

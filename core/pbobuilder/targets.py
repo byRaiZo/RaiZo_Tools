@@ -4,7 +4,7 @@ import os
 
 from .constants import WIN_SEP
 from .filters import should_skip_dir, should_skip_file
-from .files import file_fingerprint, file_sha1_cached_for_build
+from .files import collect_config_include_paths_for_source, file_fingerprint, file_sha1_cached_for_build
 
 
 def get_safe_temp_name(name):
@@ -159,6 +159,7 @@ def compute_addon_state_hash(source_dir, prefix, settings, extra_patterns=None, 
         "reject_source_mlod_fallback": True,
         "verify_every_p3d_is_odol": True,
         "generate_texheaders": True,
+        "config_include_expansion": True,
         "p3d_obfuscator_exe": file_fingerprint(
             settings.get("p3d_obfuscator_exe", ""), content_safe_cache, build_hash_cache
         ),
@@ -193,6 +194,19 @@ def compute_addon_state_hash(source_dir, prefix, settings, extra_patterns=None, 
             digest.update(str(stat.st_mtime_ns).encode("ascii"))
             if content_safe_cache:
                 digest.update(file_sha1_cached_for_build(full, build_hash_cache).encode("ascii"))
+
+    for include_path in sorted(collect_config_include_paths_for_source(source_dir, extra_patterns), key=str.lower):
+        rel = os.path.relpath(include_path, source_dir).replace(os.sep, WIN_SEP).lower()
+        try:
+            stat = os.stat(include_path)
+        except OSError:
+            continue
+        digest.update(b"config_include:")
+        digest.update(rel.encode("utf-8"))
+        digest.update(str(stat.st_size).encode("ascii"))
+        digest.update(str(stat.st_mtime_ns).encode("ascii"))
+        if content_safe_cache:
+            digest.update(file_sha1_cached_for_build(include_path, build_hash_cache).encode("ascii"))
     return digest.hexdigest()
 
 
