@@ -84,6 +84,7 @@ TEXT = {
         "source_root": "Исходная папка",
         "output_root_client": "Вывод client",
         "output_root_server": "Вывод server",
+        "same_as_client_output": "Как вывод client",
         "pbo_name": "Имя PBO",
         "pbo_name_placeholder": "Опционально для одного аддона",
         "pipeline": "Пайплайн",
@@ -118,7 +119,6 @@ TEXT = {
         "select_addon_check": "Выберите хотя бы один аддон для проверки.",
         "select_addon_build": "Выберите хотя бы один аддон для сборки.",
         "select_output_client": "Выберите папку вывода client.",
-        "select_output_server": "Выберите папку вывода server для аддонов _SERVER.",
         "pbo_override_single": "Своё имя PBO можно задать только для одного аддона.",
         "select_required": "Выберите {label}.",
         "file_missing": "{label} не существует: {path}",
@@ -184,6 +184,7 @@ TEXT = {
         "source_root": "Source root",
         "output_root_client": "Output root client",
         "output_root_server": "Output root server",
+        "same_as_client_output": "Same as client output",
         "pbo_name": "PBO name",
         "pbo_name_placeholder": "Optional for single addon",
         "pipeline": "Pipeline",
@@ -218,7 +219,6 @@ TEXT = {
         "select_addon_check": "Select at least one addon to check.",
         "select_addon_build": "Select at least one addon to build.",
         "select_output_client": "Select an output root client folder.",
-        "select_output_server": "Select an output root server folder for _SERVER addons.",
         "pbo_override_single": "PBO name override can only be used with one selected addon.",
         "select_required": "Select {label}.",
         "file_missing": "{label} does not exist: {path}",
@@ -397,6 +397,7 @@ class SourceRootRow(QWidget):
         sources: list[str] | None = None,
         parent: QWidget | None = None,
         language: str = "ru",
+        empty_label: str = "",
     ) -> None:
         super().__init__(parent)
         self.path_label = label
@@ -435,10 +436,14 @@ class SourceRootRow(QWidget):
         layout.addWidget(self.remove_button, 1, 2)
         layout.addWidget(self.open_button, 1, 3)
         layout.setColumnStretch(0, 1)
+        if empty_label:
+            self.combo.addItem(empty_label, "")
         for source in self._normalized_sources(current, sources or []):
             self._add_item(source)
         if current:
             self.set_text(current)
+        elif empty_label:
+            self.combo.setCurrentIndex(0)
         self.combo.currentIndexChanged.connect(self._changed)
         self.add_button.clicked.connect(self.add_source_root)
         self.remove_button.clicked.connect(self.remove_source_root)
@@ -472,7 +477,8 @@ class SourceRootRow(QWidget):
     def find_source_index(self, value: str) -> int:
         key = self._key(value)
         for index in range(self.combo.count()):
-            stored = str(self.combo.itemData(index) or self.combo.itemText(index))
+            data = self.combo.itemData(index)
+            stored = str(data) if data is not None else self.combo.itemText(index)
             if self._key(stored) == key:
                 return index
         return -1
@@ -514,7 +520,7 @@ class SourceRootRow(QWidget):
 
     def remove_source_root(self) -> None:
         index = self.combo.currentIndex()
-        if index < 0:
+        if index < 0 or not self.text():
             return
         self._updating = True
         try:
@@ -892,6 +898,7 @@ class PboBuilderPage(QWidget):
             self.settings.pbo_last_output_server_root,
             self.settings.pbo_output_server_roots,
             language=self.current_language,
+            empty_label=_t("same_as_client_output", self.current_language),
         )
         self.pbo_name_edit = QLineEdit(self.settings.pbo_last_name)
         self.pbo_name_edit.setPlaceholderText(_t("pbo_name_placeholder", self.current_language))
@@ -1115,8 +1122,6 @@ class PboBuilderPage(QWidget):
             raise BuildError(_t("select_output_client", self.current_language))
         output = Path(output_text).resolve() if output_text else source.parent
         server_text = self.output_root_server_row.text()
-        if not preflight_only and any(name.upper().endswith("_SERVER") for name in selected) and not server_text:
-            raise BuildError(_t("select_output_server", self.current_language))
         server_output = Path(server_text).resolve() if server_text else output
         if not preflight_only and (
             output == source

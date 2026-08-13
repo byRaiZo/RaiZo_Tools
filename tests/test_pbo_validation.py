@@ -6,10 +6,12 @@ from pathlib import Path
 import pytest
 
 from core.pbobuilder.errors import BuildError
+from core.pbobuilder.files import expand_config_cpp_includes_in_staging
 from core.pbobuilder.build import build_all
 from core.pbobuilder.models import BuildConfig, BuildResult
 from core.pbobuilder.pbo import pack_pbo, replace_output_artifacts
 from core.pbobuilder.validation import validate_pbo, validate_with_bankrev
+from core.pbobuilder.targets import compute_addon_state_hash
 
 
 def _log(_message: object) -> None:
@@ -185,3 +187,67 @@ def test_typed_pipeline_builds_and_validates_real_pbo(tmp_path):
     assert isinstance(result, BuildResult)
     assert result.built == 1
     assert validate_pbo(pbo, "MyAddon").entries[0].name == "config.cpp"
+
+
+def test_config_cpp_includes_are_expanded_in_staging_with_original_indent(tmp_path):
+    source = tmp_path / "addon"
+    staging = tmp_path / "staging"
+    source.mkdir()
+    (source / "config.cpp").write_text('class Root\n{\n\t#include "Test.cpp"\n};\n', encoding="utf-8")
+    (source / "Test.cpp").write_text("value = 1;\nvalue = 2;\n", encoding="utf-8")
+
+    expanded = expand_config_cpp_includes_in_staging(source, staging, _log)
+
+    assert expanded == 1
+    assert (staging / "config.cpp").read_text(encoding="utf-8") == ("class Root\n{\n\tvalue = 1;\n\tvalue = 2;\n};\n")
+
+
+def test_config_include_content_changes_build_hash_even_when_cpp_is_excluded(tmp_path):
+    source = tmp_path / "addon"
+    source.mkdir()
+    (source / "config.cpp").write_text('#include "Test.cpp"\n', encoding="utf-8")
+    include_file = source / "Test.cpp"
+    include_file.write_text("value = 1;\n", encoding="utf-8")
+    settings = BuildConfig(
+        source_root=str(source),
+        output_root_dir=str(tmp_path / "output"),
+        temp_dir=str(tmp_path / "temp"),
+        use_binarize=False,
+        convert_config=False,
+        sign_pbos=False,
+        binarize_exe="",
+        cfgconvert_exe="",
+        dssignfile_exe="",
+        private_key="",
+        exclude_patterns="*.cpp",
+        project_root=str(tmp_path),
+        pbo_name="",
+        max_processes=1,
+        selected_addons=("addon",),
+    ).as_legacy_dict()
+
+    first = compute_addon_state_hash(source, "addon", settings, ["*.cpp"])
+    include_file.write_text("value = 2;\n", encoding="utf-8")
+    second = compute_addon_state_hash(source, "addon", settings, ["*.cpp"])
+
+    assert first != second
+
+
+def test_config_include_cannot_escape_addon_root(tmp_path):
+    source = tmp_path / "addon"
+    source.mkdir()
+    (tmp_path / "outside.cpp").write_text("value = 1;\n", encoding="utf-8")
+    (source / "config.cpp").write_text('#include "../outside.cpp"\n', encoding="utf-8")
+
+    with pytest.raises(BuildError, match="outside addon folder"):
+        expand_config_cpp_includes_in_staging(source, tmp_path / "staging", _log)
+
+
+def test_recursive_config_include_is_rejected(tmp_path):
+    source = tmp_path / "addon"
+    source.mkdir()
+    (source / "config.cpp").write_text('#include "Test.cpp"\n', encoding="utf-8")
+    (source / "Test.cpp").write_text('#include "config.cpp"\n', encoding="utf-8")
+
+    with pytest.raises(BuildError, match="Recursive config include"):
+        expand_config_cpp_includes_in_staging(source, tmp_path / "staging", _log)

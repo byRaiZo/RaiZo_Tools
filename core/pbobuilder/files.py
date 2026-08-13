@@ -1,5 +1,6 @@
 import hashlib
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -12,6 +13,8 @@ from .filters import (
     should_skip_file,
     source_file_should_be_staged,
 )
+
+CONFIG_INCLUDE_RE = re.compile(r'^([ \t]*)#include\s+"([^"]+)"\s*(?://.*)?$')
 
 
 def file_sha1(file_path):
@@ -183,6 +186,136 @@ def copy_source_to_staging(source_dir, staging_dir, extra_patterns=None, log=Non
             "Incremental staging: "
             f"copied={copied}, updated={updated}, unchanged={unchanged}, removed={removed}, content_safe={content_safe}"
         )
+
+
+def config_line_has_include(line):
+    return CONFIG_INCLUDE_RE.match(line.rstrip("\r\n")) is not None
+
+
+def has_config_cpp_includes(source_dir, extra_patterns=None):
+    if not os.path.isdir(source_dir):
+        return False
+
+    for root, dirs, files in os.walk(source_dir):
+        dirs[:] = [d for d in dirs if not should_skip_dir(d, extra_patterns)]
+        for file in files:
+            if file.lower() != "config.cpp":
+                continue
+            try:
+                with open(os.path.join(root, file), "r", encoding="utf-8-sig", errors="ignore") as config_file:
+                    if any(config_line_has_include(line) for line in config_file):
+                        return True
+            except OSError:
+                continue
+    return False
+
+
+def resolve_config_include(include_value, including_file, source_root):
+    include_path = include_value.replace("/", os.sep).replace(WIN_SEP, os.sep)
+    resolved = os.path.abspath(os.path.join(os.path.dirname(including_file), include_path))
+    source_root_abs = os.path.abspath(source_root)
+    if not os.path.normcase(resolved).startswith(os.path.normcase(source_root_abs) + os.sep):
+        raise BuildError(f"Config include points outside addon folder: {include_value}")
+    if not os.path.isfile(resolved):
+        raise BuildError(f"Config include file not found: {include_value}")
+    return resolved
+
+
+def indent_included_config_text(text, indent):
+    return "".join(indent + line if line.strip() else line for line in text.splitlines(keepends=True))
+
+
+def expand_config_file_includes(config_path, source_root, stack=None):
+    stack = stack or []
+    config_abs = os.path.abspath(config_path)
+    config_key = os.path.normcase(config_abs)
+    if config_key in stack:
+        raise BuildError(f"Recursive config include detected: {config_path}")
+    try:
+        with open(config_path, "r", encoding="utf-8-sig", errors="ignore") as config_file:
+            lines = config_file.readlines()
+    except OSError as error:
+        raise BuildError(f"Could not read config include source: {config_path} ({error})") from error
+
+    expanded = []
+    next_stack = [*stack, config_key]
+    for line in lines:
+        match = CONFIG_INCLUDE_RE.match(line.rstrip("\r\n"))
+        if not match:
+            expanded.append(line)
+            continue
+        indent, include_value = match.groups()
+        include_path = resolve_config_include(include_value, config_path, source_root)
+        included_text = expand_config_file_includes(include_path, source_root, next_stack)
+        if included_text and line.endswith(("\r\n", "\n")) and not included_text.endswith(("\r\n", "\n")):
+            included_text += "\r\n" if line.endswith("\r\n") else "\n"
+        expanded.append(indent_included_config_text(included_text, indent))
+    return "".join(expanded)
+
+
+def collect_config_include_paths(config_path, source_root, stack=None):
+    stack = stack or []
+    config_abs = os.path.abspath(config_path)
+    config_key = os.path.normcase(config_abs)
+    if config_key in stack:
+        raise BuildError(f"Recursive config include detected: {config_path}")
+    try:
+        with open(config_path, "r", encoding="utf-8-sig", errors="ignore") as config_file:
+            lines = config_file.readlines()
+    except OSError as error:
+        raise BuildError(f"Could not read config include source: {config_path} ({error})") from error
+
+    result = []
+    next_stack = [*stack, config_key]
+    for line in lines:
+        match = CONFIG_INCLUDE_RE.match(line.rstrip("\r\n"))
+        if not match:
+            continue
+        include_path = resolve_config_include(match.group(2), config_path, source_root)
+        result.append(include_path)
+        result.extend(collect_config_include_paths(include_path, source_root, next_stack))
+    return result
+
+
+def collect_config_include_paths_for_source(source_dir, extra_patterns=None):
+    if not os.path.isdir(source_dir):
+        return []
+    result = []
+    seen = set()
+    for root, dirs, files in os.walk(source_dir):
+        dirs[:] = [d for d in dirs if not should_skip_dir(d, extra_patterns)]
+        for file in files:
+            if file.lower() != "config.cpp":
+                continue
+            for include_path in collect_config_include_paths(os.path.join(root, file), source_dir):
+                key = os.path.normcase(os.path.abspath(include_path))
+                if key not in seen:
+                    seen.add(key)
+                    result.append(include_path)
+    return result
+
+
+def expand_config_cpp_includes_in_staging(source_dir, staging_dir, log, extra_patterns=None):
+    if not os.path.isdir(source_dir):
+        return 0
+    expanded_count = 0
+    for root, dirs, files in os.walk(source_dir):
+        dirs[:] = [d for d in dirs if not should_skip_dir(d, extra_patterns)]
+        for file in files:
+            if file.lower() != "config.cpp":
+                continue
+            source_config = os.path.join(root, file)
+            expanded_text = expand_config_file_includes(source_config, source_dir)
+            if expanded_text == Path(source_config).read_text(encoding="utf-8-sig", errors="ignore"):
+                continue
+            rel_config = os.path.relpath(source_config, source_dir)
+            target_config = os.path.join(staging_dir, rel_config)
+            os.makedirs(os.path.dirname(target_config), exist_ok=True)
+            with open(target_config, "w", encoding="utf-8", newline="") as target_file:
+                target_file.write(expanded_text)
+            expanded_count += 1
+            log(f"Expanded config.cpp includes in staging: {rel_config.replace(os.sep, WIN_SEP)}")
+    return expanded_count
 
 
 def ensure_p3d_files_in_staging(source_dir, staging_dir, log, extra_patterns=None):

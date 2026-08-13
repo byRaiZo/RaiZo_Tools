@@ -13,6 +13,8 @@ from .files import (
     ensure_builder_temp_root,
     ensure_config_cpp_files_in_staging,
     ensure_p3d_files_in_staging,
+    expand_config_cpp_includes_in_staging,
+    has_config_cpp_includes,
     overlay_tree,
 )
 from .filters import create_temp_exclude_file, has_p3d_files, parse_exclude_patterns
@@ -219,7 +221,9 @@ def _prepare_job(
                 shutil.rmtree(selected_temp)
 
     folder_has_p3d = config.use_binarize and has_p3d_files(folder_path, context.exclude_patterns)
-    staging = os.path.join(addon_temp, "staging") if config.convert_config or config.use_binarize else ""
+    has_config_includes = has_config_cpp_includes(folder_path, context.exclude_patterns)
+    needs_staging = config.convert_config or config.use_binarize or has_config_includes
+    staging = os.path.join(addon_temp, "staging") if needs_staging else ""
     if staging:
         log("Copying source to staging folder...")
         copy_source_to_staging(
@@ -229,6 +233,8 @@ def _prepare_job(
             log,
             True,
         )
+        if has_config_includes:
+            expand_config_cpp_includes_in_staging(folder_path, staging, log, context.exclude_patterns)
     pack_source = staging or folder_path
     binarized = os.path.join(addon_temp, "binarized") if folder_has_p3d else ""
     work_dir = create_output_work_dir(output_pbo, folder_name)
@@ -304,6 +310,14 @@ def _stage_job(context: _BuildContext, job: BuildJob, log: LogCallback) -> None:
 
     if config.convert_config:
         ensure_config_cpp_files_in_staging(job.folder_path, job.pack_source, log, context.exclude_patterns)
+    if job.staging_dir:
+        expand_config_cpp_includes_in_staging(
+            job.folder_path,
+            job.pack_source,
+            log,
+            context.exclude_patterns,
+        )
+    if config.convert_config:
         run_cfgconvert_rvmats_to_bin(job.pack_source, config.cfgconvert_exe, log, context.exclude_patterns)
         run_cfgconvert_to_bin(job.pack_source, config.cfgconvert_exe, log, context.exclude_patterns)
     if config.use_binarize:
